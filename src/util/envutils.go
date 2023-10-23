@@ -5,9 +5,10 @@ import (
 )
 
 const (
-	GoogleClientIdKey     = "google-project-a-oauth-client-id"
-	GoogleClientSecretKey = "google-project-a-oauth-client-secret"
-	GoogleRedirectUrlKey  = "google-project-a-oauth-redirect-url"
+	GoogleClientIdKey          = "google-project-a-oauth-client-id"
+	GoogleClientSecretKey      = "google-project-a-oauth-client-secret"
+	GoogleRedirectUrlKey       = "google-project-a-oauth-redirect-url"
+	PostgresqlConnectionString = "postgresql-connectionstring"
 )
 
 type GoogleOAuthCredentials struct {
@@ -26,4 +27,10 @@ func GetGoogleOAuthCredentials() (GoogleOAuthCredentials, bool) {
 		ClientSecret: v2,
 		RedirectURL:  v3,
 	}, ok1 && ok2 && ok3
+}
+
+func GetPostresqlConnectionString() (string, bool) {
+	v, ok := os.LookupEnv(PostgresqlConnectionString)
+
+	return v, ok
 }
