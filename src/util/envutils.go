@@ -5,10 +5,10 @@ import (
 )
 
 const (
-	GoogleClientIdKey          = "google-project-a-oauth-client-id"
-	GoogleClientSecretKey      = "google-project-a-oauth-client-secret"
-	GoogleRedirectUrlKey       = "google-project-a-oauth-redirect-url"
-	PostgresqlConnectionString = "postgresql-connectionstring"
+	GoogleClientIdKey          = "project-a-oauth-client-id"
+	GoogleClientSecretKey      = "project-a-oauth-client-secret"
+	GoogleRedirectUrlKey       = "project-a-oauth-redirect-url"
+	PostgresqlConnectionString = "project-a-postgresql-connectionstring"
 )
 
 type GoogleOAuthCredentials struct {

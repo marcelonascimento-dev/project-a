@@ -1,13 +1,23 @@
 package types
 
 import (
-	"github.com/google/uuid"
+	"github.com/golang/protobuf/ptypes/timestamp"
+	"github.com/shopspring/decimal"
 )
 
 type ProductBasic struct {
-	ID     uuid.UUID
+	ID     string
 	Name   string
 	Rating float32
-	Price  Money
-	Badge  string
+	Price  decimal.Decimal
+}
+
+type Product struct {
+	BasicInfo     ProductBasic
+	Badge         string
+	Description   string
+	InStock       int
+	Category      Category
+	Creation_Date timestamp.Timestamp
+	Last_Update   timestamp.Timestamp
 }

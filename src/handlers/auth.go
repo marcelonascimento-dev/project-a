@@ -2,12 +2,8 @@ package handlers
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
-	"fmt"
-	"io"
 	"net/http"
-	"strings"
 	"time"
 
 	"github.com/dgrijalva/jwt-go"
@@ -15,92 +11,47 @@ import (
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/google"
 
+	"project-a/types"
 	"project-a/util"
 )
 
-func CreateToken(userID uint64) (string, error) {
-	credentials, ok := util.GetGoogleOAuthCredentials()
-	if !ok {
-		return "", errors.New("google oauth secret key not found")
-	}
+var appcontext_auth *types.ApplicationContext
 
-	atClaims := jwt.MapClaims{
-		"authorized": true,
-		"user_id":    userID,
-		"exp":        time.Now().Add(time.Minute * 15).Unix(),
-	}
+func CreateAuthHandler(ctx *types.ApplicationContext) {
+	appcontext_auth = ctx
+}
 
-	at := jwt.NewWithClaims(jwt.SigningMethodHS256, atClaims)
-	token, err := at.SignedString([]byte(credentials.ClientSecret))
+func WithAuthenticatedUser(ctx *fiber.Ctx) error {
+	authHeader := ctx.Cookies("session_id")
+	if authHeader == "" {
+		return fiber.NewError(fiber.StatusInternalServerError, "authorization header is missing")
+	}
+	sess, err := appcontext_auth.SessionStore.Get(ctx)
+
 	if err != nil {
-		return "", err
+		panic(err)
 	}
 
-	return token, nil
-}
-
-func TokenVerifyMiddleware(next http.HandlerFunc) http.HandlerFunc {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		authHeader := r.Header.Get("Authorization")
-		if authHeader == "" {
-			http.Error(w, "Authorization header is missing", http.StatusForbidden)
-			return
-		}
-
-		credentials, ok := util.GetGoogleOAuthCredentials()
-		if !ok {
-			http.Error(w, "Google OAuth secret key not found", http.StatusInternalServerError)
-			return
-		}
-
-		parts := strings.Split(authHeader, " ")
-		if len(parts) != 2 {
-			http.Error(w, "Malformed token", http.StatusForbidden)
-			return
-		}
-
-		tokenPart := parts[1]
-		token, err := jwt.Parse(tokenPart, func(token *jwt.Token) (interface{}, error) {
-			if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
-				return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
-			}
-			return []byte(credentials.ClientSecret), nil
-		})
-
-		if err != nil {
-			http.Error(w, "Invalid token", http.StatusForbidden)
-			return
-		}
-
-		if !token.Valid {
-			http.Error(w, "Token is not valid", http.StatusForbidden)
-			return
-		}
-
-		next.ServeHTTP(w, r)
-	})
-}
-
-func getGoogleOAuthConfig() (*oauth2.Config, error) {
-	credentials, ok := util.GetGoogleOAuthCredentials()
-	if !ok {
-		return nil, errors.New("google oauth credentials not properly configured")
+	if sess == nil {
+		return fiber.NewError(fiber.StatusBadRequest, "session nil")
 	}
 
-	return &oauth2.Config{
-		ClientID:     credentials.ClientID,
-		ClientSecret: credentials.ClientSecret,
-		RedirectURL:  credentials.RedirectURL,
-		Scopes:       []string{"https://www.googleapis.com/auth/userinfo.email", "https://www.googleapis.com/auth/userinfo.profile"},
-		Endpoint:     google.Endpoint,
-	}, nil
+	value, err := appcontext.SessionStore.Storage.Get(sess.ID())
+
+	if value == nil || err != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, "authorization is missing")
+	}
+
+	return ctx.Next()
 }
 
 func GoogleLoginHandler(ctx *fiber.Ctx) error {
 	conf, err := getGoogleOAuthConfig()
+
 	if err != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, "server environment variables not properly configured")
 	}
+
 	url := conf.AuthCodeURL("state", oauth2.AccessTypeOffline)
 
 	ctx.Redirect(url, fiber.StatusTemporaryRedirect)
@@ -109,6 +60,7 @@ func GoogleLoginHandler(ctx *fiber.Ctx) error {
 }
 
 func GoogleCallbackHandler(ctx *fiber.Ctx) error {
+
 	conf, err := getGoogleOAuthConfig()
 	if err != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, "server environment variables not properly configured")
@@ -127,11 +79,71 @@ func GoogleCallbackHandler(ctx *fiber.Ctx) error {
 	}
 
 	defer resp.Body.Close()
-	data, _ := io.ReadAll(resp.Body)
-	var userInfo map[string]interface{}
-	json.Unmarshal(data, &userInfo)
 
-	ctx.Writef("User info: %s", userInfo)
+	sess, err := appcontext_auth.SessionStore.Get(ctx)
 
-	return nil
+	if err != nil {
+		panic(err)
+	}
+
+	if sess == nil {
+		return fiber.NewError(fiber.StatusBadRequest, "session nil")
+	}
+
+	token_session, err := createToken(sess.ID())
+
+	if err != nil {
+		panic(err)
+	}
+
+	sess.Set(sess.ID(), token_session)
+
+	// Save session
+	if err := sess.Save(); err != nil {
+		panic(err)
+	}
+
+	return ctx.SendString("Usuário Logado com sucesso!")
+}
+
+func getGoogleOAuthConfig() (*oauth2.Config, error) {
+	credentials, ok := util.GetGoogleOAuthCredentials()
+	if !ok {
+		return nil, errors.New("google oauth credentials not properly configured")
+	}
+
+	return &oauth2.Config{
+		ClientID:     credentials.ClientID,
+		ClientSecret: credentials.ClientSecret,
+		RedirectURL:  credentials.RedirectURL,
+		Scopes:       []string{"https://www.googleapis.com/auth/userinfo.email", "https://www.googleapis.com/auth/userinfo.profile"},
+		Endpoint:     google.Endpoint,
+	}, nil
+}
+
+func createToken(userID string) (string, error) {
+	credentials, ok := util.GetGoogleOAuthCredentials()
+	if !ok {
+		return "", errors.New("google oauth secret key not found")
+	}
+
+	atClaims := jwt.MapClaims{
+		"authorized": true,
+		"user_id":    userID,
+		"exp":        time.Now().Add(time.Hour * 24).Unix(),
+	}
+
+	at := jwt.NewWithClaims(jwt.SigningMethodHS256, atClaims)
+	token, err := at.SignedString([]byte(credentials.ClientSecret))
+	if err != nil {
+		return "", err
+	}
+
+	return token, nil
+}
+
+func tokenVerifyMiddleware(next http.HandlerFunc) http.HandlerFunc {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+
+	})
 }

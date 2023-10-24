@@ -1,7 +1,14 @@
 package types
 
-import "github.com/gofiber/fiber/v2"
+import (
+	"database/sql"
+
+	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v2/middleware/session"
+)
 
 type ApplicationContext struct {
-	FiberApp *fiber.App
+	FiberApp     *fiber.App
+	DB           *sql.DB
+	SessionStore *session.Store
 }
